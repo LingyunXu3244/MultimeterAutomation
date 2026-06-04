@@ -1,0 +1,18 @@
+# Python
+__pycache__/
+*.py[cod]
+*.egg-info/
+
+# Virtual environment
+.venv/
+
+# VS Code
+.vscode/
+
+# Exported data / logs
+meter_log_*.csv
+meter_log_*.xlsx
+
+# OS
+Thumbs.db
+.DS_Store
