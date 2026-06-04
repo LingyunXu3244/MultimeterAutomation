@@ -3,34 +3,47 @@
 **Document type:** Lab-Automation Building Block Spec-let
 **Building block:** DMM Control GUI (HP 34401A over GPIB)
 **Status:** Draft
+**Owner / Point of contact:** Lingyun Xu (lingyun.xu@intel.com)
 **Last updated:** 2026-06-04
-**Author:** _TBD_
+**Validated against:** HP 34401A (firmware `7-5-2` per `*IDN?`), Python 3.10,
+NI-VISA + NI-488.2, PyVISA 1.16, matplotlib 3.10, openpyxl 3.1
 
-> **Image placeholders:** Throughout this document, `📷 [IMAGE: ...]` marks where a
-> photo or screenshot should be inserted. Replace each with an actual image before
-> publishing.
+> **Structure note:** This document follows the team speclet structure defined in
+> `SKILL.md` (Table of Contents → Intro/Background/Scope → Boundaries →
+> Requirements → Setup → How to Use → Common Errors).
+
+> **Image placeholders:** `📷 [IMAGE: ...]` marks where a photo or screenshot
+> should be inserted. Items marked *(Will be added later)* are pending capture.
 
 ---
 
 ## Table of Contents
 1. [Intro / Background / Scope](#1-intro--background--scope)
-2. [Use Cases](#2-use-cases)
-3. [Why It's Complicated](#3-why-its-complicated)
-4. [How It's Currently Being Done (Full Capabilities)](#4-how-its-currently-being-done-full-capabilities)
-5. [How It's Going To Be Done (Captured Capabilities)](#5-how-its-going-to-be-done-captured-capabilities)
-6. [Boundaries](#6-boundaries)
-7. [Requirements / Pre-requisites](#7-requirements--pre-requisites)
-8. [Setup Steps](#8-setup-steps)
-9. [How To Use It](#9-how-to-use-it)
-10. [Common Errors](#10-common-errors)
-11. [Protections](#11-protections-optional)
-12. [Open Questions / Next Steps](#12-open-questions--next-steps)
+   - [1.1 Background](#11-background)
+   - [1.2 Scope](#12-scope)
+   - [1.3 Use Cases](#13-use-cases)
+   - [1.4 Why It's Complicated](#14-why-its-complicated)
+   - [1.5 How It's Currently Being Done (Full Capabilities)](#15-how-its-currently-being-done-full-capabilities)
+   - [1.6 How It's Going To Be Done (Captured Capabilities)](#16-how-its-going-to-be-done-captured-capabilities)
+2. [Boundaries](#2-boundaries)
+   - [2.1 Device Limitations](#21-device-limitations)
+   - [2.2 Implementation / Automation Limitations](#22-implementation--automation-limitations)
+   - [2.3 Manual vs Automated Capability Matrix](#23-manual-vs-automated-capability-matrix)
+   - [2.4 Specifications & Operating Limits](#24-specifications--operating-limits)
+3. [Requirements / Pre-requisites](#3-requirements--pre-requisites)
+   - [3.1 Hardware](#31-hardware)
+   - [3.2 Protections](#32-protections-optional)
+   - [3.3 Software Tools](#33-software-tools)
+4. [Setup Steps](#4-setup-steps)
+5. [How To Use It](#5-how-to-use-it)
+6. [Common Errors](#6-common-errors)
+7. [Appendix — Open Questions, Glossary, Legend](#7-appendix)
 
 ---
 
 ## 1. Intro / Background / Scope
 
-### Background
+### 1.1 Background
 Bench digital multimeters (DMMs) like the **HP/Agilent 34401A** are workhorse lab
 instruments, but by default they are operated by hand from the front panel and
 read out one value at a time. For any measurement that needs to be **logged over
@@ -40,23 +53,22 @@ The **DMM Control GUI** is a lab-automation building block: a desktop applicatio
 that connects to the 34401A over GPIB, configures it, streams live readings,
 plots them, and exports the logged data to CSV/Excel.
 
-### Scope
+### 1.2 Scope
 **In scope**
-- Automated configuration and live acquisition from a single HP 34401A.
+- Automated configuration and live acquisition from a **single** HP 34401A.
 - Multiple measurement modes (DC/AC voltage, resistance, continuity, diode,
   frequency, period).
 - Live numeric display, trend chart, running statistics, alarms.
 - Data export to CSV and Excel (with embedded chart).
 
 **Out of scope (current version)**
-- Multi-instrument / multi-channel orchestration.
+- Multi-instrument / multi-channel orchestration (single meter only).
 - Closed-loop control or automated pass/fail sequencing.
 - Headless / scripted (no-GUI) operation.
+- Integration into GTAX.
 - Instruments other than the 34401A (though the SCPI design is portable — TBD).
 
----
-
-## 2. Use Cases
+### 1.3 Use Cases
 
 | # | Use Case | Description |
 |---|----------|-------------|
@@ -68,9 +80,7 @@ plots them, and exports the logged data to CSV/Excel.
 | 6 | Frequency / period capture | Measure signal frequency or period using a gate (aperture) time. |
 | 7 | Data hand-off | Export a timestamped run to Excel for analysis or reporting. |
 
----
-
-## 3. Why It's Complicated
+### 1.4 Why It's Complicated
 
 - **Instrument communication stack:** Talking to the 34401A requires a layered
   driver stack (NI-488.2 GPIB driver → NI-VISA → PyVISA → SCPI). Any missing
@@ -89,14 +99,12 @@ plots them, and exports the logged data to CSV/Excel.
 - **Overload / edge values:** Readings can come back as `OL` (overload) and must
   be handled gracefully in display, stats, and plotting.
 
----
-
-## 4. How It's Currently Being Done (Full Capabilities)
+### 1.5 How It's Currently Being Done (Full Capabilities)
 
 The 34401A itself (and the current GUI) supports the following. This is the
 **superset** of what the hardware can do.
 
-### Measurement modes & controls
+#### Measurement modes & controls
 
 | Mode | Unit | Range control | NPLC | Autozero | Aperture |
 |------|------|---------------|------|----------|----------|
@@ -108,7 +116,7 @@ The 34401A itself (and the current GUI) supports the following. This is the
 | Frequency | Hz | Yes | — | — | Yes |
 | Period | s | Yes | — | — | Yes |
 
-### Hardware capabilities (from 34401A datasheet — confirm against `e9d43e.pdf`)
+#### Hardware capabilities (from 34401A datasheet — confirm against `e9d43e.pdf`)
 
 | Capability | Value | Status |
 |------------|-------|--------|
@@ -118,9 +126,10 @@ The 34401A itself (and the current GUI) supports the following. This is the
 | Resistance ranges | 100 Ω – 100 MΩ | TBD — verify |
 | Frequency range | 3 Hz – 300 kHz | TBD — verify |
 | Reading rate (max) | up to ~1000 rdgs/s (low resolution) | TBD — verify |
+| Reading memory | ~512 readings (instrument buffer) | TBD — verify |
 | Interfaces | GPIB (HP-IB) and RS-232 | confirm |
 
-### GUI capabilities (today)
+#### GUI capabilities (today)
 - Live numeric display with unit and alarm color-coding.
 - Live trend chart (rolling 300-point window).
 - Running statistics: Count, Min, Max, Mean (per active mode).
@@ -131,12 +140,11 @@ The 34401A itself (and the current GUI) supports the following. This is the
 - Automatic mode-switch (reconfigures meter live when mode changes).
 - CSV export and Excel export (with embedded line chart).
 
----
+### 1.6 How It's Going To Be Done (Captured Capabilities)
 
-## 5. How It's Going To Be Done (Captured Capabilities)
-
-This section describes how much of the full hardware capability the GUI building
-block actually captures.
+This section describes **how much** of the full hardware capability the GUI
+building block actually captures. (See the full side-by-side in
+[§2.3 Manual vs Automated Capability Matrix](#23-manual-vs-automated-capability-matrix).)
 
 | Hardware capability | Captured by GUI? | Notes |
 |---------------------|------------------|-------|
@@ -159,9 +167,66 @@ capture, current modes, and 4-wire resistance are **not yet** implemented.
 
 ---
 
-## 6. Boundaries
+## 2. Boundaries
 
-### Specifications Summary
+### 2.1 Device Limitations
+What the **hardware physically cannot do**, regardless of the software:
+
+- **Single function at a time** — cannot measure, e.g., voltage and current
+  simultaneously; one measurement function is active per acquisition.
+- **Single input channel** — no built-in multi-channel scanning without an
+  external switch/multiplexer unit.
+- **Not a high-speed digitizer** — max ~1000 rdgs/s at low resolution; high
+  resolution (6½ digits) is much slower.
+- **Limited on-board memory** — instrument reading buffer holds ~512 readings.
+- **Input ceilings** — capped at ~1000 V DC / 750 V AC (see [§3.2](#32-protections-optional)).
+- **2-wire vs 4-wire trade-off** — 2-wire resistance includes lead resistance;
+  true 4-wire requires the dedicated sense terminals.
+
+### 2.2 Implementation / Automation Limitations
+What the **automation does not (yet) support**, even though the device can:
+
+- **No current modes** — DC/AC current are not implemented in the GUI.
+- **No 4-wire resistance** — only 2-wire is exposed.
+- **Instrument trigger/buffer unused** — the GUI polls `READ?` rather than using
+  hardware triggering or on-board buffering.
+- **Hardcoded address** — resource fixed at `GPIB0::6::INSTR` (`RESOURCE` constant).
+- **Single instrument only** — no multi-meter orchestration.
+- **GUI-only** — no headless/scripted/API mode; not integrated into GTAX.
+- **Effective sample rate** — bounded by software interval + conversion time, not
+  the raw hardware reading rate.
+
+### 2.3 Manual vs Automated Capability Matrix
+
+Legend: ✅ supported · ⚠️ partial · ❌ not available / locked off.
+
+| Feature / Capability | Manual (front panel) | Automated (GUI) | Notes / Locked off |
+|----------------------|:-------------------:|:---------------:|--------------------|
+| DC Voltage | ✅ | ✅ | Range / NPLC / autozero exposed |
+| AC Voltage | ✅ | ⚠️ | Range only (NPLC/autozero N/A) |
+| Resistance (2-wire) | ✅ | ✅ | Full controls |
+| Resistance (4-wire) | ✅ | ❌ | **Locked off** — not implemented |
+| DC Current | ✅ | ❌ | **Locked off** — not implemented |
+| AC Current | ✅ | ❌ | **Locked off** — not implemented |
+| Continuity | ✅ | ✅ | Fixed-function |
+| Diode | ✅ | ✅ | Fixed-function |
+| Frequency | ✅ | ✅ | Aperture exposed |
+| Period | ✅ | ✅ | Aperture exposed |
+| Instrument MATH (Null/dB/dBm/Limit) | ✅ | ⚠️ | GUI does its own Min/Max/Mean + alarms; instrument MATH unused |
+| External / single triggering | ✅ | ⚠️ | GUI uses `READ?` polling; no external trigger |
+| On-board reading buffer (~512) | ✅ | ❌ | **Not used** — readings stored on PC |
+| Data logging to file | ❌ (manual transcription) | ✅ | CSV / Excel — **automation advantage** |
+| Live trend chart | ❌ | ✅ | **Automation advantage** |
+| Running statistics | ❌ (manual) | ✅ | Count / Min / Max / Mean |
+| Alarms / threshold flags | ⚠️ (limited) | ✅ | Color-coded low/high alarms |
+| Presets / one-click config | ❌ | ✅ | 5 presets |
+| Remote / automated config | ❌ | ✅ | SCPI over VISA |
+| Multi-instrument | ❌ | ❌ | **Locked off** — single meter only |
+| Headless / scripted run | ❌ | ❌ | **Not yet** — GUI only |
+
+### 2.4 Specifications & Operating Limits
+
+#### Specifications Summary
 
 | Parameter | Value |
 |-----------|-------|
@@ -176,7 +241,7 @@ capture, current modes, and 4-wire resistance are **not yet** implemented.
 | Slowest sample rate (observed) | TBD — needs measurement |
 | Max test duration tested | TBD — needs measurement |
 
-### Operating boundaries & limits
+#### Operating boundaries & limits
 
 | Boundary | Limit | Limited by |
 |----------|-------|------------|
@@ -187,7 +252,7 @@ capture, current modes, and 4-wire resistance are **not yet** implemented.
 | Instrument address | Fixed `GPIB0::6::INSTR` | Hardcoded `RESOURCE` constant |
 | Overload | Returned as `OL`, plotted as 0 | Range too low for signal |
 
-### Accuracy & resolution (per mode)
+#### Accuracy & resolution (per mode)
 
 | Mode | Resolution | Accuracy | Status |
 |------|-----------|----------|--------|
@@ -199,9 +264,9 @@ capture, current modes, and 4-wire resistance are **not yet** implemented.
 
 ---
 
-## 7. Requirements / Pre-requisites
+## 3. Requirements / Pre-requisites
 
-### 7.1 Hardware
+### 3.1 Hardware
 
 | Item | Model / Spec | Notes |
 |------|--------------|-------|
@@ -211,17 +276,43 @@ capture, current modes, and 4-wire resistance are **not yet** implemented.
 | Host PC | Windows 10/11 | Tested with Python 3.10 |
 | Test leads / DUT | Probes, diodes, resistors, etc. | Depends on measurement mode |
 
-**Hardware photos (insert):**
-- 📷 [IMAGE: HP 34401A front panel]
-![alt text](images/image.png)
-- 📷 [IMAGE: NI GPIB-USB-HS adapter]
-![alt text](images/image-1.png)
-- 📷 [IMAGE: IEEE-488 GPIB cable / connector]
-![alt text](images/image-2.png)
-- 📷 [IMAGE: Test leads / probes]
-![alt text](images/image-3.png)
+**Hardware photos:**
+- HP 34401A front panel
+![HP 34401A front panel](images/image.png)
+- NI GPIB-USB-HS adapter
+![NI GPIB-USB-HS adapter](images/image-1.png)
+- IEEE-488 GPIB cable / connector
+![IEEE-488 GPIB cable](images/image-2.png)
+- Test leads / probes
+![Test leads](images/image-3.png)
 
-### 7.2 Software Tools
+### 3.2 Protections (optional)
+
+> Document electrical/operational protections. Confirm hardware-specific values
+> against `e9d43e.pdf` before relying on them.
+
+**Instrument input protection (34401A — verify against datasheet)**
+
+| Terminal / Mode | Max input | Status |
+|-----------------|-----------|--------|
+| Voltage input (HI–LO) | up to 1000 V DC / 750 V AC | TBD — verify |
+| Current input (if used) | fused (e.g. 3 A / 250 V) | TBD — verify (current modes not yet in GUI) |
+| Input overvoltage cat. | per datasheet | TBD — verify |
+
+**Software / operational protections (implemented)**
+- **Overload handling:** `OL` readings are detected and displayed safely (plotted
+  as 0, not crashed).
+- **Retry on transient faults:** up to 3 retries with buffer clear on VISA errors.
+- **Alarm thresholds:** optional low/high limits visually flag out-of-range values.
+- **Clean session handling:** background thread opens/closes its own VISA session
+  and won't clobber a newer session on restart.
+
+> ⚠️ **Operator safety:** Do not exceed the 34401A's rated input limits. Confirm
+> ranges and terminal ratings in the official manual before high-voltage or
+> current measurements. Current measurement modes are **not yet implemented** in
+> the GUI.
+
+### 3.3 Software Tools
 
 | Tool | Purpose | Where to get it |
 |------|---------|-----------------|
@@ -239,9 +330,10 @@ capture, current modes, and 4-wire resistance are **not yet** implemented.
 
 ---
 
-## 8. Setup Steps
+## 4. Setup Steps
 
 📷 [IMAGE: Overall setup diagram — PC → USB → GPIB adapter → GPIB cable → 34401A]
+*(Will be added later)*
 
 ### Step 1 — Configure the multimeter for GPIB
 1. Power on the HP 34401A.
@@ -252,10 +344,11 @@ capture, current modes, and 4-wire resistance are **not yet** implemented.
    the adapter into the PC.
 
 📷 [IMAGE: 34401A I/O menu showing HP-IB and address 6]
+*(Will be added later)*
 
 ### Step 2 — Install NI drivers
-1. Install **NI-VISA** (link in §7.2). Reboot.
-2. Install **NI-488.2** (link in §7.2). Reboot.
+1. Install **NI-VISA** (link in §3.3). Reboot.
+2. Install **NI-488.2** (link in §3.3). Reboot.
 
 ### Step 3 — Verify the instrument in NI MAX
 1. Open **NI MAX** (Measurement & Automation Explorer).
@@ -264,6 +357,7 @@ capture, current modes, and 4-wire resistance are **not yet** implemented.
    address `6`.
 
 📷 [IMAGE: NI MAX showing GPIB0 and the detected 34401A]
+*(Will be added later)*
 
 ### Step 4 — Set up the Python environment
 Run in PowerShell from the project folder:
@@ -295,15 +389,17 @@ Press `Ctrl+C` to stop.
 
 ---
 
-## 9. How To Use It
+## 5. How To Use It
 
-### 🟢 TLDR — Quick Run
+### 🟢 TL;DR — Quick Run
 ```powershell
 cd c:\DAQ-Automation\MultimeterAutomation\MultimeterAutomation
 .\.venv\Scripts\python.exe voltage_ui.py
 ```
 Then in the window: pick **Mode** → (optional) **Apply Preset** → **Connect & Start**
 → **Stop** → **Export Excel/CSV**.
+
+> **AI prompts:** N/A — no AI is part of the runtime measurement flow.
 
 ### Full step-by-step
 
@@ -314,7 +410,7 @@ Then in the window: pick **Mode** → (optional) **Apply Preset** → **Connect 
    ```
    The dark-themed **"HP 34401A Measurement Console"** window opens.
 
-   📷 [IMAGE: GUI main window]
+   ![GUI main window](images/image.png)
 
 2. **Choose a measurement mode** from the **Mode** dropdown (DC Voltage, AC
    Voltage, Resistance, Continuity, Diode, Frequency, Period). Controls that don't
@@ -350,6 +446,16 @@ Then in the window: pick **Mode** → (optional) **Apply Preset** → **Connect 
    - **Clear Data** resets chart, stats, and history.
 
    📷 [IMAGE: Example exported Excel with chart]
+   *(Will be added later)*
+
+### How you know it's working (pass criteria)
+- Status bar shows the connected instrument ID (e.g. `HEWLETT-PACKARD,34401A,...`).
+- The large numeric display updates at the configured interval.
+- The trend chart scrolls and the Count statistic increments.
+
+### When finished (teardown)
+- Click **Stop** to end acquisition and release the VISA session.
+- **Export** any data you want to keep, then close the window.
 
 ### Example workflows
 - **Log a DC rail:** Mode = DC Voltage → Apply preset `Stable Precision` →
@@ -363,11 +469,11 @@ Then in the window: pick **Mode** → (optional) **Apply Preset** → **Connect 
 
 ---
 
-## 10. Common Errors
+## 6. Common Errors
 
 | Error / Symptom | Cause | Fix |
 |-----------------|-------|-----|
-| `did not find executable at '...Python314\python.exe'` | `.venv` built against a Python version no longer installed | Delete and rebuild `.venv` with an installed Python (see §8 Step 4) |
+| `did not find executable at '...Python314\python.exe'` | `.venv` built against a Python version no longer installed | Delete and rebuild `.venv` with an installed Python (see §4 Step 4) |
 | `Could not locate a VISA implementation` | NI-VISA not installed | Install NI-VISA, reboot |
 | `No module named 'gpib'` / `VI_ERROR_LIBRARY_NFOUND` | NI-488.2 (GPIB driver) missing | Install NI-488.2, reboot |
 | `VI_ERROR_TMO` (timeout) | Transient GPIB hiccup | GUI retries up to 3×; reseat cable, lower sample rate if persistent |
@@ -377,39 +483,16 @@ Then in the window: pick **Mode** → (optional) **Apply Preset** → **Connect 
 | ERR annunciator on meter | Invalid SCPI sequence (legacy) | Current code clears with `*CLS`/`*OPC?`; if seen, restart acquisition |
 | Excel export fails | `openpyxl` not installed | `pip install openpyxl` in the venv |
 | Normal reading shows red | Alarm enabled with wrong thresholds | Disable alarm or fix low/high values |
+| `Permission denied to <user>` on `git push` | Machine credential helper bound to another account | Use SSH with your own key, or clear the cached credential |
 
 📷 [IMAGE: Example error dialog / status bar message]
+*(Will be added later)*
 
 ---
 
-## 11. Protections (Optional)
+## 7. Appendix
 
-> Document any electrical/operational protections. Confirm hardware-specific
-> values against `e9d43e.pdf` before relying on them.
-
-### Software / operational protections (implemented)
-- **Overload handling:** `OL` readings are detected and displayed safely (plotted
-  as 0, not crashed).
-- **Retry on transient faults:** up to 3 retries with buffer clear on VISA errors.
-- **Alarm thresholds:** optional low/high limits visually flag out-of-range values.
-- **Clean session handling:** background thread opens/closes its own VISA session
-  and won't clobber a newer session on restart.
-
-### Instrument input protection (34401A — verify against datasheet)
-| Terminal / Mode | Max input | Status |
-|-----------------|-----------|--------|
-| Voltage input (HI–LO) | up to 1000 V DC / 750 V AC | TBD — verify |
-| Current input (if used) | fused (e.g. 3 A / 250 V) | TBD — verify (current modes not yet in GUI) |
-| Input overvoltage cat. | per datasheet | TBD — verify |
-
-> ⚠️ **Operator safety:** Do not exceed the 34401A's rated input limits. Confirm
-> ranges and terminal ratings in the official manual before high-voltage or
-> current measurements. Current measurement modes are **not yet implemented** in
-> the GUI.
-
----
-
-## 12. Open Questions / Next Steps
+### 7.1 Open Questions / Next Steps
 1. **Characterize sampling rate** (fastest/slowest stable per mode) and record units.
 2. **Duration limit test** — find practical max run length; consider streaming to
    disk for long captures instead of holding all readings in memory.
@@ -417,7 +500,21 @@ Then in the window: pick **Mode** → (optional) **Apply Preset** → **Connect 
 4. **Add missing modes** — DC/AC current and 4-wire resistance.
 5. **Parameterize the VISA address** (remove hardcoded `GPIB0::6::INSTR`).
 6. **Define a headless/API mode** so a test sequencer can drive the block.
-7. **Insert all images** marked `📷 [IMAGE: ...]`.
+7. **Integrate into GTAX.**
+8. **Insert all images** marked `📷 [IMAGE: ...]`.
 
-> **Legend:** _TBD — needs measurement_ = obtain empirically; _TBD — needs
-> verification_ = expected from datasheet but not yet confirmed.
+### 7.2 Glossary
+| Term | Meaning |
+|------|---------|
+| DMM | Digital Multimeter |
+| GPIB / HP-IB | IEEE-488 instrument bus |
+| SCPI | Standard Commands for Programmable Instruments |
+| VISA | Virtual Instrument Software Architecture (I/O layer) |
+| NPLC | Number of Power-Line Cycles (integration time) |
+| Aperture | Gate time for frequency/period measurements |
+| `OL` | Overload (signal exceeds active range) |
+| DUT | Device Under Test |
+
+### 7.3 Legend
+> _TBD — needs measurement_ = obtain empirically; _TBD — needs verification_ =
+> expected from datasheet but not yet confirmed.
